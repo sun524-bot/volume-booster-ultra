@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Volume Booster Ultra (Up to 600%)",
-  "version": "1.1.0",
-  "description": "Boost audio up to 600% on any tab with anti-clipping dynamics compression, multi-tab & multi-window audio management, and live visualizer.",
+  "version": "1.2.0",
+  "description": "Boost audio up to 600% on any tab with dual-engine Web Audio processing, anti-clipping dynamics compression, and multi-tab audio management.",
   "permissions": [
     "tabCapture",
     "offscreen",
     "storage",
     "activeTab",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -17,6 +18,14 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {

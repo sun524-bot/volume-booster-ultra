@@ -71,6 +71,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateUI(currentVolume, isMuted);
   refreshAudibleTabs();
 
+  // Send initial gain to content script
+  try {
+    chrome.tabs.sendMessage(currentTabId, {
+      type: 'PAGE_SET_GAIN',
+      gain: currentVolume / 100,
+      isMuted: isMuted
+    }).catch(() => {});
+  } catch (e) {}
+
   // Check backend capture status
   try {
     const res = await chrome.runtime.sendMessage({
@@ -155,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 4. Apply Gain & Sync with Background Audio Pipeline
+  // 4. Apply Gain & Sync with Dual-Engine Audio Pipeline
   async function applyVolumeChange(newVol, newMuted = false) {
     currentVolume = newVol;
     isMuted = newMuted;
@@ -173,6 +182,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const gainValue = currentVolume / 100;
 
+    // Engine 1: Direct In-Page Web Audio Boost (Zero latency, instant gain on YouTube, Spotify, HTML5 media)
+    try {
+      chrome.tabs.sendMessage(currentTabId, {
+        type: 'PAGE_SET_GAIN',
+        gain: gainValue,
+        isMuted: isMuted
+      }).catch(() => {});
+    } catch (e) {}
+
+    // Engine 2: Background Service Worker & Offscreen Tab Capture
     try {
       if (!isCaptured) {
         const res = await chrome.runtime.sendMessage({
@@ -229,18 +248,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           const card = document.createElement('div');
           card.className = 'tab-card';
 
-          // Info Container
           const tabInfo = document.createElement('div');
           tabInfo.className = 'tab-info';
 
-          // Safe Favicon
           const img = document.createElement('img');
           img.className = 'tab-favicon';
           const fallbackIcon = '../icons/icon16.png';
           img.src = (t.favIconUrl && t.favIconUrl.startsWith('http')) ? t.favIconUrl : fallbackIcon;
           img.onerror = () => { img.src = fallbackIcon; };
 
-          // Safe Title
           const titleSpan = document.createElement('span');
           titleSpan.className = 'tab-title';
           titleSpan.title = t.title || 'Untitled Tab';
@@ -249,7 +265,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           tabInfo.appendChild(img);
           tabInfo.appendChild(titleSpan);
 
-          // Safe Toggle Button
           const toggleBtn = document.createElement('button');
           toggleBtn.className = `tab-mute-toggle ${t.isMuted ? 'is-muted' : ''}`;
           toggleBtn.textContent = t.isMuted ? 'Unmute' : 'Mute';
@@ -297,6 +312,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   powerBtn.addEventListener('click', async () => {
     try {
+      // Detach content script & background stream
+      chrome.tabs.sendMessage(currentTabId, {
+        type: 'PAGE_SET_GAIN',
+        gain: 1.0,
+        isMuted: false
+      }).catch(() => {});
+
       await chrome.runtime.sendMessage({
         target: 'background',
         type: 'STOP_CAPTURE',
