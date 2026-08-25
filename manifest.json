@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Volume Booster Ultra (Up to 600%)",
   "version": "1.2.0",
-  "description": "Boost audio up to 600% on any tab with dual-engine Web Audio processing, anti-clipping dynamics compression, and multi-tab audio management.",
+  "description": "Boost tab volume up to 600% with anti-clipping dynamics compression, multi-tab audio manager, and global hotkeys.",
   "permissions": [
     "tabCapture",
     "offscreen",
