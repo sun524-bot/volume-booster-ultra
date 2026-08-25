@@ -2,7 +2,6 @@
 
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 
-// Maintain creating offscreen document promise to prevent race conditions
 let creatingOffscreenPromise = null;
 let isAutoSoloEnabled = false;
 
@@ -79,7 +78,7 @@ function updateBadge(tabId, gain, isMuted = false) {
 // -------------------------------------------------------------
 
 /**
- * Mutes all tabs in the active window except the active tab.
+ * Mutes other tabs in the active window only (keeps active tab unmuted).
  */
 async function muteOthersInWindow(activeTabId, windowId) {
   const tabs = await chrome.tabs.query({ windowId });
@@ -94,9 +93,21 @@ async function muteOthersInWindow(activeTabId, windowId) {
 }
 
 /**
- * Mutes all tabs across all browser windows except the active tab.
+ * Mutes all tabs in OTHER browser windows (leaves tabs in current window unchanged).
  */
-async function muteOthersAllWindows(activeTabId) {
+async function muteOtherWindows(currentWindowId) {
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (tab.windowId !== currentWindowId && tab.id) {
+      chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Mutes all tabs across ALL windows except the single active tab.
+ */
+async function muteAllOthersGlobal(activeTabId) {
   const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
     if (tab.id !== activeTabId && tab.id) {
@@ -133,7 +144,7 @@ async function unmuteAllTabs() {
 }
 
 /**
- * Returns all currently audible or boosted tabs across all windows.
+ * Returns all currently audible or muted tabs across all windows.
  */
 async function getAudibleTabs() {
   const allTabs = await chrome.tabs.query({});
@@ -158,7 +169,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
   try {
     const tab = await chrome.tabs.get(activeInfo.tabId);
     if (tab && (tab.audible || tab.url.includes('youtube') || tab.url.includes('spotify'))) {
-      muteOthersAllWindows(activeInfo.tabId);
+      muteAllOthersGlobal(activeInfo.tabId);
     }
   } catch (e) {
     console.debug('Auto solo tab activation check:', e);
@@ -262,9 +273,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
 
-        case 'MUTE_OTHERS_ALL_WINDOWS': {
+        case 'MUTE_OTHER_WINDOWS': {
+          const { windowId } = message.data;
+          await muteOtherWindows(windowId);
+          sendResponse({ success: true });
+          break;
+        }
+
+        case 'MUTE_ALL_OTHERS_GLOBAL': {
           const { tabId } = message.data;
-          await muteOthersAllWindows(tabId);
+          await muteAllOthersGlobal(tabId);
           sendResponse({ success: true });
           break;
         }
@@ -311,7 +329,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   })();
 
-  return true; // Keep channel open for async response
+  return true;
 });
 
 // Clean up when tabs are closed

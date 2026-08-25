@@ -129,7 +129,7 @@
           <span>Multi-Tab Audio Manager</span>
         </div>
         <div class="toggle-right">
-          <span id="audibleBadge" class="audible-pill" title="Audible tabs">0 audible</span>
+          <span id="audibleBadge" class="audible-pill" title="Audible tabs">0 other</span>
           <svg id="chevronIcon" class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
@@ -143,25 +143,25 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="2" y="3" width="20" height="14" rx="2"></rect>
               <line x1="8" y1="21" x2="16" y2="21"></line>
-              <line x1="12" y1="17" x2="12" y2="21"></line>
             </svg>
-            <span>Mute Others (Window)</span>
+            <span>Mute Others (This Win)</span>
           </button>
 
-          <button id="btnMuteOthersAll" class="bulk-btn" title="Mute all other tabs across all browser windows">
+          <button id="btnMuteOtherWindows" class="bulk-btn" title="Mute all tabs in other browser windows">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="2" width="16" height="14" rx="2"></rect>
-              <path d="M6 18h14a2 2 0 0 0 2-2V6"></path>
+              <rect x="2" y="2" width="13" height="13" rx="2"></rect>
+              <path d="M7 17h12a2 2 0 0 0 2-2V7"></path>
             </svg>
-            <span>Mute Others (All Win)</span>
+            <span>Mute Other Windows</span>
           </button>
 
-          <button id="btnMuteAll" class="bulk-btn danger" title="Mute all open tabs everywhere">
+          <button id="btnMuteAllOthersGlobal" class="bulk-btn danger" title="Mute all other tabs across ALL windows except this active tab">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="1" y1="1" x2="23" y2="23"></line>
-              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
-            <span>Mute All Tabs</span>
+            <span>Mute All Except Active</span>
           </button>
 
           <button id="btnUnmuteAll" class="bulk-btn success" title="Unmute all tabs in all windows (Alt+Shift+U)">
@@ -177,7 +177,7 @@
         <div class="focus-mode-card">
           <div class="focus-text">
             <strong>Auto Solo / Focus Mode</strong>
-            <p>Automatically mutes other tabs when active tab plays sound</p>
+            <p>Auto-mutes other tabs when active tab plays sound</p>
           </div>
           <label class="switch">
             <input type="checkbox" id="autoSoloToggle">

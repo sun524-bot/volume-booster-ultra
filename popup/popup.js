@@ -18,8 +18,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const drawerContent = document.getElementById('drawerContent');
   const audibleBadge = document.getElementById('audibleBadge');
   const btnMuteOthersWindow = document.getElementById('btnMuteOthersWindow');
-  const btnMuteOthersAll = document.getElementById('btnMuteOthersAll');
-  const btnMuteAll = document.getElementById('btnMuteAll');
+  const btnMuteOtherWindows = document.getElementById('btnMuteOtherWindows');
+  const btnMuteAllOthersGlobal = document.getElementById('btnMuteAllOthersGlobal');
   const btnUnmuteAll = document.getElementById('btnUnmuteAll');
   const autoSoloToggle = document.getElementById('autoSoloToggle');
   const audibleTabsContainer = document.getElementById('audibleTabsContainer');
@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 5. Multi-Tab Scanner & Renderer
+  // 5. Multi-Tab Scanner & Renderer (Safe DOM methods)
   async function refreshAudibleTabs() {
     try {
       const res = await chrome.runtime.sendMessage({
@@ -229,30 +229,43 @@ document.addEventListener('DOMContentLoaded', async () => {
           const card = document.createElement('div');
           card.className = 'tab-card';
 
-          const defaultFav = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2394a3b8"><circle cx="12" cy="12" r="10"/></svg>';
-          const iconSrc = t.favIconUrl && t.favIconUrl.startsWith('http') ? t.favIconUrl : defaultFav;
+          // Info Container
+          const tabInfo = document.createElement('div');
+          tabInfo.className = 'tab-info';
 
-          card.innerHTML = `
-            <div class="tab-info">
-              <img class="tab-favicon" src="${iconSrc}" onerror="this.src='${defaultFav}'" alt="" />
-              <span class="tab-title" title="${t.title}">${t.title}</span>
-            </div>
-            <button class="tab-mute-toggle ${t.isMuted ? 'is-muted' : ''}" data-tab-id="${t.id}" data-muted="${t.isMuted}">
-              ${t.isMuted ? 'Unmute' : 'Mute'}
-            </button>
-          `;
+          // Safe Favicon
+          const img = document.createElement('img');
+          img.className = 'tab-favicon';
+          const fallbackIcon = '../icons/icon16.png';
+          img.src = (t.favIconUrl && t.favIconUrl.startsWith('http')) ? t.favIconUrl : fallbackIcon;
+          img.onerror = () => { img.src = fallbackIcon; };
 
-          const toggleBtn = card.querySelector('.tab-mute-toggle');
+          // Safe Title
+          const titleSpan = document.createElement('span');
+          titleSpan.className = 'tab-title';
+          titleSpan.title = t.title || 'Untitled Tab';
+          titleSpan.textContent = t.title || 'Untitled Tab';
+
+          tabInfo.appendChild(img);
+          tabInfo.appendChild(titleSpan);
+
+          // Safe Toggle Button
+          const toggleBtn = document.createElement('button');
+          toggleBtn.className = `tab-mute-toggle ${t.isMuted ? 'is-muted' : ''}`;
+          toggleBtn.textContent = t.isMuted ? 'Unmute' : 'Mute';
+
           toggleBtn.addEventListener('click', async () => {
-            const willMute = !(toggleBtn.getAttribute('data-muted') === 'true');
+            const willMute = !t.isMuted;
             await chrome.runtime.sendMessage({
               target: 'background',
               type: 'TOGGLE_TAB_MUTE',
               data: { tabId: t.id, muted: willMute }
             });
-            setTimeout(refreshAudibleTabs, 100);
+            setTimeout(refreshAudibleTabs, 150);
           });
 
+          card.appendChild(tabInfo);
+          card.appendChild(toggleBtn);
           audibleTabsContainer.appendChild(card);
         });
       }
@@ -313,39 +326,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.storage.local.set({ drawerExpanded: !isExpanded });
   });
 
-  // Bulk Actions
+  // Bulk Action 1: Mute Others (This Window)
   btnMuteOthersWindow.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({
       target: 'background',
       type: 'MUTE_OTHERS_WINDOW',
       data: { tabId: currentTabId, windowId: currentWindowId }
     });
-    refreshAudibleTabs();
+    setTimeout(refreshAudibleTabs, 150);
   });
 
-  btnMuteOthersAll.addEventListener('click', async () => {
+  // Bulk Action 2: Mute Other Windows
+  btnMuteOtherWindows.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({
       target: 'background',
-      type: 'MUTE_OTHERS_ALL_WINDOWS',
+      type: 'MUTE_OTHER_WINDOWS',
+      data: { windowId: currentWindowId }
+    });
+    setTimeout(refreshAudibleTabs, 150);
+  });
+
+  // Bulk Action 3: Mute All Others Global (Active Tab remains unmuted)
+  btnMuteAllOthersGlobal.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'MUTE_ALL_OTHERS_GLOBAL',
       data: { tabId: currentTabId }
     });
-    refreshAudibleTabs();
+    setTimeout(refreshAudibleTabs, 150);
   });
 
-  btnMuteAll.addEventListener('click', async () => {
-    await chrome.runtime.sendMessage({
-      target: 'background',
-      type: 'MUTE_ALL_TABS'
-    });
-    refreshAudibleTabs();
-  });
-
+  // Bulk Action 4: Unmute All Everywhere
   btnUnmuteAll.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({
       target: 'background',
       type: 'UNMUTE_ALL_TABS'
     });
-    refreshAudibleTabs();
+    setTimeout(refreshAudibleTabs, 150);
   });
 
   // Auto Solo Switch
