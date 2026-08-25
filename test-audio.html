@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volume Booster Ultra - Audio Test Lab</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(18, 24, 38, 0.85);
+      --border: rgba(255, 255, 255, 0.1);
+      --accent: #38bdf8;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .container {
+      max-width: 680px;
+      width: 100%;
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 26px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #38bdf8, #818cf8, #f43f5e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+    }
+    p.subtitle {
+      color: var(--muted);
+      text-align: center;
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+    .player-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .player-card h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      color: var(--accent);
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+    }
+    button.stop-btn {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    button.stop-btn:hover {
+      background: rgba(239, 68, 68, 0.4);
+    }
+    .instructions {
+      margin-top: 24px;
+      background: rgba(56, 189, 248, 0.05);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    .instructions strong {
+      color: var(--text);
+    }
+    ol {
+      margin: 8px 0 0 0;
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔊 Volume Booster Ultra Test Lab</h1>
+    <p class="subtitle">Use this offline studio to test live audio boosting, clipping prevention, and visualizer responsiveness.</p>
+
+    <!-- Synthetic Chords Generator -->
+    <div class="player-card">
+      <h3>1. Ambient Synth & Beat (Continuous Audio)</h3>
+      <p style="font-size: 12px; color: var(--muted); margin-bottom: 14px;">Plays a rhythmic ambient chord progression with soft percussion. Ideal for testing 200% to 600% boost clarity.</p>
+      <div class="btn-group">
+        <button id="playSynthBtn">▶ Play Ambient Synth</button>
+        <button id="stopSynthBtn" class="stop-btn">⏹ Stop</button>
+      </div>
+    </div>
+
+    <!-- Speech / Low-Volume Audio Simulator -->
+    <div class="player-card">
+      <h3>2. Low-Volume Speech & Dialogue Simulator</h3>
+      <p style="font-size: 12px; color: var(--muted); margin-bottom: 14px;">Simulates quiet podcast dialogue recorded at -20dB. Test how the extension brings quiet voices up to clear audible levels.</p>
+      <div class="btn-group">
+        <button id="playSpeechBtn">▶ Play Quiet Voice Track</button>
+        <button id="stopSpeechBtn" class="stop-btn">⏹ Stop</button>
+      </div>
+    </div>
+
+    <div class="instructions">
+      <strong>How to test with Volume Booster Ultra:</strong>
+      <ol>
+        <li>Click <strong>"Play Ambient Synth"</strong> above to start hearing the audio stream.</li>
+        <li>Click the <strong>Volume Booster</strong> icon in your browser toolbar.</li>
+        <li>Drag the slider or click <strong>200%</strong>, <strong>400%</strong>, or <strong>600%</strong> to experience extreme volume amplification without distortion.</li>
+        <li>Observe the live VU visualizer meter responding dynamically to the music!</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    let audioCtx = null;
+    let synthTimer = null;
+    let isSynthRunning = false;
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Synthesize ambient chords
+    function playChord(freqs, duration) {
+      const ctx = getAudioContext();
+      const now = ctx.currentTime;
+      
+      freqs.forEach(freq => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        
+        // ADSR Envelope
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.08, now + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start(now);
+        osc.stop(now + duration);
+      });
+    }
+
+    // Drum beat tick
+    function playBeep(freq = 150, duration = 0.08) {
+      const ctx = getAudioContext();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(30, now + duration);
+      
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    const chords = [
+      [261.63, 329.63, 392.00], // C Maj
+      [220.00, 261.63, 329.63], // A Min
+      [174.61, 220.00, 261.63], // F Maj
+      [196.00, 246.94, 293.66]  // G Maj
+    ];
+
+    let chordIdx = 0;
+
+    document.getElementById('playSynthBtn').addEventListener('click', () => {
+      if (isSynthRunning) return;
+      isSynthRunning = true;
+      getAudioContext();
+
+      synthTimer = setInterval(() => {
+        playChord(chords[chordIdx], 1.8);
+        playBeep(120, 0.1);
+        chordIdx = (chordIdx + 1) % chords.length;
+      }, 900);
+    });
+
+    document.getElementById('stopSynthBtn').addEventListener('click', () => {
+      isSynthRunning = false;
+      if (synthTimer) clearInterval(synthTimer);
+    });
+
+    // Quiet voice tone simulator
+    let voiceTimer = null;
+    document.getElementById('playSpeechBtn').addEventListener('click', () => {
+      const ctx = getAudioContext();
+      if (voiceTimer) clearInterval(voiceTimer);
+      
+      const freqs = [350, 420, 310, 480, 280, 520, 390];
+      let i = 0;
+      voiceTimer = setInterval(() => {
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freqs[i % freqs.length], now);
+        
+        // Very low gain (~0.015) to simulate quiet speech
+        gain.gain.setValueAtTime(0.015, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+        i++;
+      }, 300);
+    });
+
+    document.getElementById('stopSpeechBtn').addEventListener('click', () => {
+      if (voiceTimer) clearInterval(voiceTimer);
+    });
+  </script>
+</body>
+</html>

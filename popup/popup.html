@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volume Booster Ultra</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="glass-card">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Volume Booster</h1>
+          <span class="badge">ULTRA 600%</span>
+        </div>
+      </div>
+      <div id="statusIndicator" class="status-indicator active" title="Active on this tab">
+        <span class="dot"></span>
+        <span class="status-label">READY</span>
+      </div>
+    </header>
+
+    <!-- Main Gauge & Number Display -->
+    <main class="main-display">
+      <div class="gauge-container">
+        <!-- SVG Circular Ring -->
+        <svg class="gauge-ring" viewBox="0 0 160 160">
+          <circle class="ring-bg" cx="80" cy="80" r="68"></circle>
+          <circle id="gaugeProgress" class="ring-fill" cx="80" cy="80" r="68"></circle>
+        </svg>
+        
+        <div class="gauge-content">
+          <div class="volume-value-wrapper">
+            <span id="volumeValue" class="volume-value">100</span>
+            <span class="volume-unit">%</span>
+          </div>
+          <span id="volumeTier" class="volume-tier">NORMAL</span>
+        </div>
+      </div>
+
+      <!-- Live VU Equalizer Visualizer -->
+      <div class="visualizer-container" id="visualizer">
+        <div class="vu-bar"><div class="vu-bar-fill"></div></div>
+        <div class="vu-bar"><div class="vu-bar-fill"></div></div>
+        <div class="vu-bar"><div class="vu-bar-fill"></div></div>
+        <div class="vu-bar"><div class="vu-bar-fill"></div></div>
+        <div class="vu-bar"><div class="vu-bar-fill"></div></div>
+        <div class="vu-bar"><div class="vu-bar-fill"></div></div>
+      </div>
+
+      <!-- Volume Range Slider -->
+      <div class="slider-wrapper">
+        <div class="slider-labels">
+          <span>0%</span>
+          <span class="baseline">100%</span>
+          <span>300%</span>
+          <span class="max-label">600%</span>
+        </div>
+        <input 
+          type="range" 
+          id="volumeSlider" 
+          min="0" 
+          max="600" 
+          step="5" 
+          value="100" 
+          aria-label="Volume Booster Slider"
+        />
+      </div>
+
+      <!-- Quick Preset Pills -->
+      <div class="presets-grid">
+        <button class="preset-btn" data-val="100">100%</button>
+        <button class="preset-btn" data-val="200">200%</button>
+        <button class="preset-btn" data-val="400">400%</button>
+        <button class="preset-btn max-preset" data-val="600">600% 🔥</button>
+      </div>
+    </main>
+
+    <!-- Quick Action Controls -->
+    <footer class="controls-footer">
+      <button id="muteBtn" class="action-btn mute-btn" title="Toggle Mute">
+        <svg class="icon-unmuted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+        <svg class="icon-muted" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="1" y1="1" x2="23" y2="23"></line>
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <line x1="23" y1="9" x2="17" y2="15"></line>
+          <line x1="17" y1="9" x2="23" y2="15"></line>
+        </svg>
+        <span id="muteLabel">Mute</span>
+      </button>
+
+      <button id="resetBtn" class="action-btn reset-btn" title="Reset to 100%">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+          <path d="M3 3v5h5"></path>
+        </svg>
+        <span>Reset</span>
+      </button>
+
+      <button id="powerBtn" class="action-btn power-btn" title="Turn Off Booster on this Tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+          <line x1="12" y1="2" x2="12" y2="12"></line>
+        </svg>
+        <span>Detach</span>
+      </button>
+    </footer>
+
+    <!-- Anti-Clipping Indicator Tag -->
+    <div class="dynamics-indicator">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+      </svg>
+      <span>Anti-Clipping Dynamics Compressor Active</span>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
