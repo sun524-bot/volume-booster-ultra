@@ -1,7 +1,7 @@
 // popup.js - Interactive Controller for Volume Booster Ultra
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // UI Elements
+  // Main UI Elements
   const volumeSlider = document.getElementById('volumeSlider');
   const volumeValue = document.getElementById('volumeValue');
   const volumeTier = document.getElementById('volumeTier');
@@ -13,27 +13,42 @@ document.addEventListener('DOMContentLoaded', async () => {
   const statusIndicator = document.getElementById('statusIndicator');
   const vuBarFills = document.querySelectorAll('.vu-bar-fill');
 
+  // Multi-Tab Audio Manager Elements
+  const drawerToggleBtn = document.getElementById('drawerToggleBtn');
+  const drawerContent = document.getElementById('drawerContent');
+  const audibleBadge = document.getElementById('audibleBadge');
+  const btnMuteOthersWindow = document.getElementById('btnMuteOthersWindow');
+  const btnMuteOthersAll = document.getElementById('btnMuteOthersAll');
+  const btnMuteAll = document.getElementById('btnMuteAll');
+  const btnUnmuteAll = document.getElementById('btnUnmuteAll');
+  const autoSoloToggle = document.getElementById('autoSoloToggle');
+  const audibleTabsContainer = document.getElementById('audibleTabsContainer');
+  const refreshTabsBtn = document.getElementById('refreshTabsBtn');
+
   const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 68; // ~427.256
 
   let currentTabId = null;
+  let currentWindowId = null;
   let currentVolume = 100;
   let isMuted = false;
   let isCaptured = false;
   let vuInterval = null;
+  let tabRefreshInterval = null;
 
-  // 1. Get current active tab
+  // 1. Get current active tab and window
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab && tab.id) {
     currentTabId = tab.id;
+    currentWindowId = tab.windowId;
   } else {
     statusIndicator.classList.remove('active');
     statusIndicator.querySelector('.status-label').textContent = 'NO TAB';
     return;
   }
 
-  // 2. Load stored state for this tab
+  // 2. Load stored state for this tab and global settings
   const storageKey = `tab_${currentTabId}`;
-  const storedData = await chrome.storage.local.get([storageKey]);
+  const storedData = await chrome.storage.local.get([storageKey, 'autoSoloEnabled', 'drawerExpanded']);
   if (storedData[storageKey]) {
     const saved = storedData[storageKey];
     currentVolume = saved.volume !== undefined ? saved.volume : 100;
@@ -41,8 +56,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     isCaptured = !!saved.isCaptured;
   }
 
+  // Restore Auto Solo setting
+  if (storedData.autoSoloEnabled !== undefined) {
+    autoSoloToggle.checked = !!storedData.autoSoloEnabled;
+  }
+
+  // Restore Drawer expansion state
+  if (storedData.drawerExpanded) {
+    drawerToggleBtn.setAttribute('aria-expanded', 'true');
+    drawerContent.classList.remove('collapsed');
+  }
+
   // Initial UI Render
   updateUI(currentVolume, isMuted);
+  refreshAudibleTabs();
 
   // Check backend capture status
   try {
@@ -148,7 +175,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       if (!isCaptured) {
-        // First-time capture initiation
         const res = await chrome.runtime.sendMessage({
           target: 'background',
           type: 'INIT_TAB_STREAM',
@@ -166,7 +192,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           startVUMeter();
         }
       } else {
-        // Stream already active, just adjust gain smoothly
         await chrome.runtime.sendMessage({
           target: 'background',
           type: 'SET_GAIN',
@@ -182,7 +207,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 5. Event Listeners
+  // 5. Multi-Tab Scanner & Renderer
+  async function refreshAudibleTabs() {
+    try {
+      const res = await chrome.runtime.sendMessage({
+        target: 'background',
+        type: 'GET_AUDIBLE_TABS'
+      });
+
+      if (res && res.tabs) {
+        const otherTabs = res.tabs.filter(t => t.id !== currentTabId);
+        audibleBadge.textContent = `${otherTabs.length} other`;
+
+        if (otherTabs.length === 0) {
+          audibleTabsContainer.innerHTML = '<div class="empty-state">No other audible tabs found</div>';
+          return;
+        }
+
+        audibleTabsContainer.innerHTML = '';
+        otherTabs.forEach(t => {
+          const card = document.createElement('div');
+          card.className = 'tab-card';
+
+          const defaultFav = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2394a3b8"><circle cx="12" cy="12" r="10"/></svg>';
+          const iconSrc = t.favIconUrl && t.favIconUrl.startsWith('http') ? t.favIconUrl : defaultFav;
+
+          card.innerHTML = `
+            <div class="tab-info">
+              <img class="tab-favicon" src="${iconSrc}" onerror="this.src='${defaultFav}'" alt="" />
+              <span class="tab-title" title="${t.title}">${t.title}</span>
+            </div>
+            <button class="tab-mute-toggle ${t.isMuted ? 'is-muted' : ''}" data-tab-id="${t.id}" data-muted="${t.isMuted}">
+              ${t.isMuted ? 'Unmute' : 'Mute'}
+            </button>
+          `;
+
+          const toggleBtn = card.querySelector('.tab-mute-toggle');
+          toggleBtn.addEventListener('click', async () => {
+            const willMute = !(toggleBtn.getAttribute('data-muted') === 'true');
+            await chrome.runtime.sendMessage({
+              target: 'background',
+              type: 'TOGGLE_TAB_MUTE',
+              data: { tabId: t.id, muted: willMute }
+            });
+            setTimeout(refreshAudibleTabs, 100);
+          });
+
+          audibleTabsContainer.appendChild(card);
+        });
+      }
+    } catch (e) {
+      console.debug('Error fetching audible tabs:', e);
+    }
+  }
+
+  // 6. Event Listeners
   volumeSlider.addEventListener('input', (e) => {
     const val = parseInt(e.target.value, 10);
     applyVolumeChange(val, false);
@@ -221,7 +300,71 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 6. Real-time VU Visualizer Meter Loop
+  // Drawer Toggle
+  drawerToggleBtn.addEventListener('click', () => {
+    const isExpanded = drawerToggleBtn.getAttribute('aria-expanded') === 'true';
+    drawerToggleBtn.setAttribute('aria-expanded', !isExpanded);
+    if (!isExpanded) {
+      drawerContent.classList.remove('collapsed');
+      refreshAudibleTabs();
+    } else {
+      drawerContent.classList.add('collapsed');
+    }
+    chrome.storage.local.set({ drawerExpanded: !isExpanded });
+  });
+
+  // Bulk Actions
+  btnMuteOthersWindow.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'MUTE_OTHERS_WINDOW',
+      data: { tabId: currentTabId, windowId: currentWindowId }
+    });
+    refreshAudibleTabs();
+  });
+
+  btnMuteOthersAll.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'MUTE_OTHERS_ALL_WINDOWS',
+      data: { tabId: currentTabId }
+    });
+    refreshAudibleTabs();
+  });
+
+  btnMuteAll.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'MUTE_ALL_TABS'
+    });
+    refreshAudibleTabs();
+  });
+
+  btnUnmuteAll.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'UNMUTE_ALL_TABS'
+    });
+    refreshAudibleTabs();
+  });
+
+  // Auto Solo Switch
+  autoSoloToggle.addEventListener('change', async (e) => {
+    await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'SET_AUTO_SOLO',
+      data: { enabled: e.target.checked }
+    });
+  });
+
+  refreshTabsBtn.addEventListener('click', () => {
+    refreshAudibleTabs();
+  });
+
+  // Periodic Tab Refresh
+  tabRefreshInterval = setInterval(refreshAudibleTabs, 3000);
+
+  // 7. Real-time VU Visualizer Meter Loop
   function startVUMeter() {
     if (vuInterval) clearInterval(vuInterval);
 
@@ -240,15 +383,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             bar.style.height = `${level}%`;
           });
         } else {
-          // Subtle idle bounce animation
           vuBarFills.forEach((bar, idx) => {
             const rnd = Math.floor(Math.random() * 20) + 10;
             bar.style.height = `${rnd}%`;
           });
         }
-      } catch (e) {
-        // Ignore polling errors when popup is closed
-      }
+      } catch (e) {}
     }, 80);
   }
 

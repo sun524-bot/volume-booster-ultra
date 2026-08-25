@@ -1,6 +1,6 @@
 # 🔊 Volume Booster Ultra (Up to 600%) — Chrome & Edge Extension
 
-> A sleek, high-performance browser extension for **Google Chrome** and **Microsoft Edge** that amplifies tab audio up to **600%** using the **Web Audio API** with intelligent anti-clipping dynamic compression, a glassmorphic dark-theme popup UI, and real-time audio visualizers.
+> A sleek, high-performance browser extension for **Google Chrome** and **Microsoft Edge** that amplifies tab audio up to **600%** using the **Web Audio API** with intelligent anti-clipping dynamic compression, a glassmorphic dark-theme popup UI, real-time audio visualizers, and a comprehensive **Multi-Tab & Multi-Window Audio Manager**.
 
 ---
 
@@ -8,12 +8,30 @@
 
 - 🚀 **Extreme 600% Amplification**: Boost quiet videos, movies, podcasts, and streams well beyond 100% standard limits.
 - 🛡️ **Anti-Clipping Dynamics Compression**: Integrates a tuned `DynamicsCompressorNode` to eliminate harsh digital clipping, audio distortion, and speaker blowout at high gain levels.
+- 🗂️ **Multi-Tab Audio Manager**:
+  - 🪟 **Mute Others (This Window)**: Mute all other tabs in the active window (`Alt+Shift+M`).
+  - 🌐 **Mute Others (All Windows)**: Mute all tabs across every open browser window with 1 click.
+  - 🔇 **Mute All Tabs**: Instant panic mute for all tabs.
+  - 🔊 **Unmute All Tabs**: Restore sound across all tabs (`Alt+Shift+U`).
+  - 🎯 **Auto Solo / Focus Mode**: Automatically mutes background tabs whenever the active tab emits sound.
+  - 🎵 **Live Audible Tab Scanner**: Inspect all tabs currently playing audio with favicons and 1-click mute toggles.
 - 🎛️ **Quick Preset Pills**: One-click jump to `100%` (Normal), `200%` (2x), `400%` (4x), or `600%` (Max Boost 🔥).
 - 📊 **Real-time VU Equalizer Visualizer**: Animated multi-band frequency bars reacting to active sound on the tab.
 - 🏷️ **Dynamic Extension Badge**: Shows active volume percentage directly on the browser toolbar icon with intuitive color cues.
 - 💾 **Per-Tab Memory**: Remembers independent volume levels for each browser tab.
 - ⚡ **Zero-Build Architecture**: 100% pure vanilla HTML5, CSS3 Glassmorphism, and ES Modules JavaScript — instant "Load unpacked" with zero build tools or dependencies.
 - 🔒 **Privacy-First**: No data collection, no telemetry, zero external tracking scripts.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action | Description |
+| :--- | :--- | :--- |
+| **`Alt + Shift + M`** | **Mute Others (Window)** | Mutes all other background tabs in current window |
+| **`Alt + Shift + U`** | **Unmute All** | Restores sound to all tabs across all windows |
+
+*(Shortcuts can be customized in `chrome://extensions/shortcuts` or `edge://extensions/shortcuts`)*
 
 ---
 
@@ -41,7 +59,7 @@ Manifest V3 replaces background pages with Service Workers, which do not have di
         │ (chrome.tabCapture.getMediaStreamId)
         ▼
 [ Background Service Worker (background.js) ]
-        │ (Message Passing)
+        │ (Message Passing / Shortcuts / Tab Events)
         ▼
 [ Offscreen Audio Processor (offscreen.html / offscreen.js) ]
         │
@@ -79,6 +97,7 @@ To test the extension offline without opening third-party websites:
 2. Click **"Play Ambient Synth"** or **"Play Quiet Voice Track"**.
 3. Click the **Volume Booster** toolbar icon.
 4. Drag the slider to **200%**, **400%**, or **600%** to hear the instant boost and observe the live visualizer!
+5. Expand the **Multi-Tab Audio Manager** drawer to test multi-tab muting, Auto Solo mode, and bulk muting actions.
 
 ---
 
@@ -86,14 +105,14 @@ To test the extension offline without opening third-party websites:
 
 ```
 Volume-Booster-Extension/
-├── manifest.json          # Manifest V3 configuration & permissions
-├── background.js          # Background service worker (badge, stream routing, tab lifecycle)
+├── manifest.json          # Manifest V3 configuration, tabs permission & shortcuts
+├── background.js          # Service worker (shortcuts, multi-tab mute, stream routing)
 ├── offscreen.html         # Offscreen document host for Web Audio API
 ├── offscreen.js           # Audio engine (GainNode, DynamicsCompressor, Analyser)
 ├── popup/
-│   ├── popup.html         # Glassmorphic control popup
-│   ├── popup.css          # Dark glassmorphism styles & animations
-│   └── popup.js           # Interactive controller, slider, presets, VU visualizer
+│   ├── popup.html         # Glassmorphic UI with Multi-Tab Audio Manager drawer
+│   ├── popup.css          # Glassmorphism styling, accordion & tab card animations
+│   └── popup.js           # Interactive controller, multi-tab scanner & bulk actions
 ├── icons/
 │   ├── icon.svg           # High-resolution vector source logo
 │   ├── icon16.png         # 16x16 toolbar icon
