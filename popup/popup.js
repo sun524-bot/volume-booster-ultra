@@ -35,36 +35,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   let vuInterval = null;
   let tabRefreshInterval = null;
 
-  // 1. Get current active tab and window
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab && tab.id) {
-    currentTabId = tab.id;
-    currentWindowId = tab.windowId;
-  } else {
-    statusIndicator.classList.remove('active');
-    statusIndicator.querySelector('.status-label').textContent = 'NO TAB';
-    return;
+  // 1. Get current active tab and window (with standalone preview fallback)
+  try {
+    if (window.chrome && chrome.tabs && chrome.tabs.query) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.id) {
+        currentTabId = tab.id;
+        currentWindowId = tab.windowId;
+      }
+    }
+  } catch (e) {
+    console.debug('Standalone environment detected');
+  }
+
+  if (!currentTabId) {
+    currentTabId = 1;
+    currentWindowId = 1;
   }
 
   // 2. Load stored state for this tab and global settings
   const storageKey = `tab_${currentTabId}`;
-  const storedData = await chrome.storage.local.get([storageKey, 'autoSoloEnabled', 'drawerExpanded']);
-  if (storedData[storageKey]) {
-    const saved = storedData[storageKey];
-    currentVolume = saved.volume !== undefined ? saved.volume : 100;
-    isMuted = !!saved.isMuted;
-    isCaptured = !!saved.isCaptured;
-  }
-
-  // Restore Auto Solo setting
-  if (storedData.autoSoloEnabled !== undefined) {
-    autoSoloToggle.checked = !!storedData.autoSoloEnabled;
-  }
-
-  // Restore Drawer expansion state
-  if (storedData.drawerExpanded) {
-    drawerToggleBtn.setAttribute('aria-expanded', 'true');
-    drawerContent.classList.remove('collapsed');
+  if (window.chrome && chrome.storage && chrome.storage.local) {
+    const storedData = await chrome.storage.local.get([storageKey, 'autoSoloEnabled', 'drawerExpanded']);
+    if (storedData[storageKey]) {
+      const saved = storedData[storageKey];
+      currentVolume = saved.volume !== undefined ? saved.volume : 100;
+      isMuted = !!saved.isMuted;
+      isCaptured = !!saved.isCaptured;
+    }
+    if (storedData.autoSoloEnabled !== undefined) {
+      autoSoloToggle.checked = !!storedData.autoSoloEnabled;
+    }
+    if (storedData.drawerExpanded) {
+      drawerToggleBtn.setAttribute('aria-expanded', 'true');
+      drawerContent.classList.remove('collapsed');
+    }
   }
 
   // Initial UI Render
