@@ -106,4 +106,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     return true;
   }
+
+  // Bug Fix: Bulk mute operations (MUTE_OTHERS_WINDOW, MUTE_ALL, etc.) call
+  // chrome.tabs.update({ muted: true }) which sets the browser-level mute flag,
+  // but the in-page AudioContext GainNode bypasses it entirely.
+  // This message handler silences the GainNode directly when the tab is muted externally.
+  if (message.type === 'PAGE_MUTE_TAB') {
+    if (audioCtx && gainNode) {
+      if (message.muted) {
+        gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+      } else {
+        // Restore to last known gain (default 1.0 if unknown)
+        const restoreGain = (typeof message.restoreGain === 'number') ? message.restoreGain : 1.0;
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+        gainNode.gain.setTargetAtTime(restoreGain, audioCtx.currentTime, 0.02);
+      }
+    }
+    sendResponse({ success: true });
+    return true;
+  }
 });

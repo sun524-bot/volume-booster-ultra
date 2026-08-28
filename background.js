@@ -78,6 +78,19 @@ function updateBadge(tabId, gain, isMuted = false) {
 // -------------------------------------------------------------
 
 /**
+ * Helper: Notify a tab's content script to mute/unmute its in-page AudioContext GainNode.
+ * This is required because chrome.tabs.update({ muted }) only sets the browser-level mute
+ * flag, which does NOT silence audio routed through a Web Audio API GainNode in content.js.
+ */
+function notifyContentMute(tabId, muted, restoreGain = 1.0) {
+  chrome.tabs.sendMessage(tabId, {
+    type: 'PAGE_MUTE_TAB',
+    muted,
+    restoreGain
+  }).catch(() => {}); // Silently ignore if content script not injected (e.g. chrome:// pages)
+}
+
+/**
  * Mutes other tabs in the active window only (keeps active tab unmuted).
  */
 async function muteOthersInWindow(activeTabId, windowId) {
@@ -85,10 +98,12 @@ async function muteOthersInWindow(activeTabId, windowId) {
   for (const tab of tabs) {
     if (tab.id !== activeTabId && tab.id) {
       chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
+      notifyContentMute(tab.id, true);
     }
   }
   if (activeTabId) {
     chrome.tabs.update(activeTabId, { muted: false }).catch(() => {});
+    notifyContentMute(activeTabId, false);
   }
 }
 
@@ -100,6 +115,7 @@ async function muteOtherWindows(currentWindowId) {
   for (const tab of tabs) {
     if (tab.windowId !== currentWindowId && tab.id) {
       chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
+      notifyContentMute(tab.id, true);
     }
   }
 }
@@ -112,10 +128,12 @@ async function muteAllOthersGlobal(activeTabId) {
   for (const tab of tabs) {
     if (tab.id !== activeTabId && tab.id) {
       chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
+      notifyContentMute(tab.id, true);
     }
   }
   if (activeTabId) {
     chrome.tabs.update(activeTabId, { muted: false }).catch(() => {});
+    notifyContentMute(activeTabId, false);
   }
 }
 
@@ -127,6 +145,7 @@ async function muteAllTabs() {
   for (const tab of tabs) {
     if (tab.id) {
       chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
+      notifyContentMute(tab.id, true);
     }
   }
 }
@@ -139,9 +158,11 @@ async function unmuteAllTabs() {
   for (const tab of tabs) {
     if (tab.id) {
       chrome.tabs.update(tab.id, { muted: false }).catch(() => {});
+      notifyContentMute(tab.id, false);
     }
   }
 }
+
 
 /**
  * Returns all currently audible or muted tabs across all windows.

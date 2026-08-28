@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               type: 'TOGGLE_TAB_MUTE',
               data: { tabId: t.id, muted: willMute }
             });
-            setTimeout(refreshAudibleTabs, 150);
+            setTimeout(refreshAudibleTabs, 600);
           });
 
           card.appendChild(tabInfo);
@@ -360,7 +360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       type: 'MUTE_OTHERS_WINDOW',
       data: { tabId: currentTabId, windowId: currentWindowId }
     });
-    setTimeout(refreshAudibleTabs, 150);
+    setTimeout(refreshAudibleTabs, 600);
   });
 
   // Bulk Action 2: Mute Other Windows
@@ -370,7 +370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       type: 'MUTE_OTHER_WINDOWS',
       data: { windowId: currentWindowId }
     });
-    setTimeout(refreshAudibleTabs, 150);
+    setTimeout(refreshAudibleTabs, 600);
   });
 
   // Bulk Action 3: Mute All Others Global (Active Tab remains unmuted)
@@ -380,7 +380,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       type: 'MUTE_ALL_OTHERS_GLOBAL',
       data: { tabId: currentTabId }
     });
-    setTimeout(refreshAudibleTabs, 150);
+    setTimeout(refreshAudibleTabs, 600);
   });
 
   // Bulk Action 4: Unmute All Everywhere
@@ -389,7 +389,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       target: 'background',
       type: 'UNMUTE_ALL_TABS'
     });
-    setTimeout(refreshAudibleTabs, 150);
+    setTimeout(refreshAudibleTabs, 600);
   });
 
   // Auto Solo Switch
