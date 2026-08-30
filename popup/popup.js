@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const saved = storedData[storageKey];
       currentVolume = saved.volume !== undefined ? saved.volume : 100;
       isMuted = !!saved.isMuted;
-      isCaptured = !!saved.isCaptured;
+      // isCaptured is always false — Engine 2 (offscreen tabCapture) is disabled to prevent echo.
     }
     if (storedData.autoSoloEnabled !== undefined) {
       autoSoloToggle.checked = !!storedData.autoSoloEnabled;
@@ -72,35 +72,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Stop any leftover offscreen capture from a previous session (prevents stale echo sessions)
+  try {
+    await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'STOP_CAPTURE',
+      data: { tabId: currentTabId }
+    });
+  } catch (e) { /* No offscreen session — safe to ignore */ }
+
   // Initial UI Render
   updateUI(currentVolume, isMuted);
   refreshAudibleTabs();
 
-  // Send initial gain to content script
+  // Send initial gain to content script (Engine 1 only)
   try {
-    chrome.tabs.sendMessage(currentTabId, {
+    const initResp = await chrome.tabs.sendMessage(currentTabId, {
       type: 'PAGE_SET_GAIN',
       gain: currentVolume / 100,
       isMuted: isMuted
-    }).catch(() => {});
-  } catch (e) {}
-
-  // Check backend capture status
-  try {
-    const res = await chrome.runtime.sendMessage({
-      target: 'background',
-      type: 'GET_STATUS',
-      data: { tabId: currentTabId }
     });
-    if (res && res.status && res.status.active) {
-      isCaptured = true;
+    if (initResp && initResp.success) {
       statusIndicator.classList.add('active');
       statusIndicator.querySelector('.status-label').textContent = 'BOOSTING';
-      startVUMeter();
     }
-  } catch (e) {
-    console.debug('Status check:', e);
-  }
+  } catch (e) { /* chrome:// pages and new tabs won't have content script — ignore */ }
 
   // 3. UI Update Helpers
   function updateUI(vol, muted) {
@@ -169,7 +165,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 4. Apply Gain & Sync with Dual-Engine Audio Pipeline
+  // 4. Apply Gain — Engine 1 (in-page content.js) is the ONLY active engine.
+  //    Engine 2 (offscreen tabCapture) is disabled — it caused echo/reverb by
+  //    playing the same audio twice: once via the page's own media element
+  //    (gain-boosted by content.js GainNode) and again via an offscreen <Audio>
+  //    element replaying the captured tab stream.
   async function applyVolumeChange(newVol, newMuted = false) {
     currentVolume = newVol;
     isMuted = newMuted;
@@ -181,54 +181,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       [`tab_${currentTabId}`]: {
         volume: currentVolume,
         isMuted: isMuted,
-        isCaptured: true
+        isCaptured: false
       }
     });
 
     const gainValue = currentVolume / 100;
 
-    // Engine 1: Direct In-Page Web Audio Boost (Zero latency, instant gain on YouTube, Spotify, HTML5 media)
+    // Engine 1 ONLY: Direct In-Page Web Audio Boost via content.js GainNode.
+    // Hooks <video>/<audio> elements directly — zero latency, no double-audio echo.
     try {
-      chrome.tabs.sendMessage(currentTabId, {
+      const resp = await chrome.tabs.sendMessage(currentTabId, {
         type: 'PAGE_SET_GAIN',
         gain: gainValue,
         isMuted: isMuted
-      }).catch(() => {});
-    } catch (e) {}
+      });
 
-    // Engine 2: Background Service Worker & Offscreen Tab Capture
-    try {
-      if (!isCaptured) {
-        const res = await chrome.runtime.sendMessage({
-          target: 'background',
-          type: 'INIT_TAB_STREAM',
-          data: {
-            tabId: currentTabId,
-            gain: gainValue,
-            isMuted: isMuted
-          }
-        });
-
-        if (res && res.success) {
-          isCaptured = true;
-          statusIndicator.classList.add('active');
-          statusIndicator.querySelector('.status-label').textContent = 'BOOSTING';
-          startVUMeter();
-        }
-      } else {
-        await chrome.runtime.sendMessage({
-          target: 'background',
-          type: 'SET_GAIN',
-          data: {
-            tabId: currentTabId,
-            gain: gainValue,
-            isMuted: isMuted
-          }
-        });
+      if (resp && resp.success) {
+        statusIndicator.classList.add('active');
+        statusIndicator.querySelector('.status-label').textContent = 'BOOSTING';
       }
-    } catch (err) {
-      console.error('Volume adjustment error:', err);
+    } catch (e) {
+      // Content script not injected on this page (chrome:// URL, etc.) — ignore.
     }
+
+    // Engine 2 (INIT_TAB_STREAM / offscreen tabCapture) intentionally disabled.
+    // Do NOT re-enable without also stopping Engine 1 first, or echo will return.
   }
 
   // 5. Multi-Tab Scanner & Renderer (Safe DOM methods)
