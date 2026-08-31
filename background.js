@@ -79,15 +79,68 @@ function updateBadge(tabId, gain, isMuted = false) {
 
 /**
  * Helper: Notify a tab's content script to mute/unmute its in-page AudioContext GainNode.
- * This is required because chrome.tabs.update({ muted }) only sets the browser-level mute
- * flag, which does NOT silence audio routed through a Web Audio API GainNode in content.js.
  */
 function notifyContentMute(tabId, muted, restoreGain = 1.0) {
   chrome.tabs.sendMessage(tabId, {
     type: 'PAGE_MUTE_TAB',
     muted,
     restoreGain
-  }).catch(() => {}); // Silently ignore if content script not injected (e.g. chrome:// pages)
+  }).catch(() => {}); // Silently ignore if content script not injected
+}
+
+/**
+ * Unified tab muting helper:
+ * 1. Sets native browser-level tab mute status via chrome.tabs.update
+ * 2. Silences in-page content.js GainNode (for Media Mode)
+ * 3. Silences offscreen.js tabCapture stream (for Stream Mode / Google Meet)
+ * 4. Synchronizes extension toolbar badge and storage state
+ */
+async function setTabMute(tabId, muted, restoreGain = 1.0) {
+  if (!tabId) return;
+
+  // 1. Native browser tab mute
+  chrome.tabs.update(tabId, { muted }).catch(() => {});
+
+  // 2. In-page content script GainNode mute
+  notifyContentMute(tabId, muted, restoreGain);
+
+  // 3. Offscreen tabCapture stream mute (Google Meet / WebRTC Stream Mode)
+  try {
+    const existingContexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH)]
+    });
+
+    if (existingContexts.length > 0) {
+      const storageKey = `tab_${tabId}`;
+      const data = await chrome.storage.local.get([storageKey]);
+      const savedVol = (data[storageKey] && data[storageKey].volume !== undefined)
+        ? data[storageKey].volume
+        : (restoreGain * 100);
+      const gain = savedVol / 100;
+
+      await chrome.runtime.sendMessage({
+        target: 'offscreen',
+        type: 'SET_GAIN',
+        data: { tabId, gain, isMuted: muted }
+      }).catch(() => {});
+
+      if (data[storageKey]) {
+        chrome.storage.local.set({
+          [storageKey]: { ...data[storageKey], isMuted: muted }
+        }).catch(() => {});
+      }
+    }
+  } catch (e) {}
+
+  // 4. Update toolbar badge
+  const storageKey = `tab_${tabId}`;
+  chrome.storage.local.get([storageKey], (data) => {
+    const vol = (data && data[storageKey] && data[storageKey].volume !== undefined)
+      ? data[storageKey].volume / 100
+      : restoreGain;
+    updateBadge(tabId, vol, muted);
+  });
 }
 
 /**
@@ -97,13 +150,11 @@ async function muteOthersInWindow(activeTabId, windowId) {
   const tabs = await chrome.tabs.query({ windowId });
   for (const tab of tabs) {
     if (tab.id !== activeTabId && tab.id) {
-      chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
-      notifyContentMute(tab.id, true);
+      await setTabMute(tab.id, true);
     }
   }
   if (activeTabId) {
-    chrome.tabs.update(activeTabId, { muted: false }).catch(() => {});
-    notifyContentMute(activeTabId, false);
+    await setTabMute(activeTabId, false);
   }
 }
 
@@ -114,8 +165,7 @@ async function muteOtherWindows(currentWindowId) {
   const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
     if (tab.windowId !== currentWindowId && tab.id) {
-      chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
-      notifyContentMute(tab.id, true);
+      await setTabMute(tab.id, true);
     }
   }
 }
@@ -127,13 +177,11 @@ async function muteAllOthersGlobal(activeTabId) {
   const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
     if (tab.id !== activeTabId && tab.id) {
-      chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
-      notifyContentMute(tab.id, true);
+      await setTabMute(tab.id, true);
     }
   }
   if (activeTabId) {
-    chrome.tabs.update(activeTabId, { muted: false }).catch(() => {});
-    notifyContentMute(activeTabId, false);
+    await setTabMute(activeTabId, false);
   }
 }
 
@@ -144,8 +192,7 @@ async function muteAllTabs() {
   const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
     if (tab.id) {
-      chrome.tabs.update(tab.id, { muted: true }).catch(() => {});
-      notifyContentMute(tab.id, true);
+      await setTabMute(tab.id, true);
     }
   }
 }
@@ -157,8 +204,7 @@ async function unmuteAllTabs() {
   const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
     if (tab.id) {
-      chrome.tabs.update(tab.id, { muted: false }).catch(() => {});
-      notifyContentMute(tab.id, false);
+      await setTabMute(tab.id, false);
     }
   }
 }
@@ -328,7 +374,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'TOGGLE_TAB_MUTE': {
           const { tabId, muted } = message.data;
-          await chrome.tabs.update(tabId, { muted });
+          await setTabMute(tabId, muted);
           sendResponse({ success: true });
           break;
         }
@@ -351,6 +397,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   })();
 
   return true;
+});
+
+// Synchronize external tab mute changes (e.g. user clicking native speaker icon on tab)
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.mutedInfo !== undefined) {
+    const isMuted = changeInfo.mutedInfo.muted;
+    // Sync in-page gain node
+    notifyContentMute(tabId, isMuted);
+
+    // Sync offscreen stream capture (Google Meet / Stream Mode)
+    try {
+      const existingContexts = await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT'],
+        documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH)]
+      });
+
+      if (existingContexts.length > 0) {
+        const storageKey = `tab_${tabId}`;
+        const data = await chrome.storage.local.get([storageKey]);
+        const gain = (data[storageKey] && data[storageKey].volume !== undefined)
+          ? data[storageKey].volume / 100
+          : 1.0;
+
+        chrome.runtime.sendMessage({
+          target: 'offscreen',
+          type: 'SET_GAIN',
+          data: { tabId, gain, isMuted }
+        }).catch(() => {});
+
+        if (data[storageKey]) {
+          chrome.storage.local.set({
+            [storageKey]: { ...data[storageKey], isMuted }
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {}
+
+    // Synchronize toolbar badge
+    const storageKey = `tab_${tabId}`;
+    chrome.storage.local.get([storageKey], (data) => {
+      const vol = (data && data[storageKey] && data[storageKey].volume !== undefined)
+        ? data[storageKey].volume / 100
+        : 1.0;
+      updateBadge(tabId, vol, isMuted);
+    });
+  }
 });
 
 // Clean up when tabs are closed
