@@ -25,15 +25,49 @@ document.addEventListener('DOMContentLoaded', async () => {
   const audibleTabsContainer = document.getElementById('audibleTabsContainer');
   const refreshTabsBtn = document.getElementById('refreshTabsBtn');
 
+  // Mode Pill Elements
+  const modeToggleBtn = document.getElementById('modeToggleBtn');
+  const modeIcon = document.getElementById('modeIcon');
+  const modeLabel = document.getElementById('modeLabel');
+
   const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 68; // ~427.256
+
+  // Known WebRTC meeting & voice domains that require tab stream capture
+  const STREAM_DOMAINS = [
+    'meet.google.com',
+    'teams.microsoft.com',
+    'teams.live.com',
+    'zoom.us',
+    'discord.com',
+    'web.skype.com',
+    'slack.com'
+  ];
 
   let currentTabId = null;
   let currentWindowId = null;
+  let currentTabUrl = '';
   let currentVolume = 100;
   let isMuted = false;
   let isCaptured = false;
+  let currentMode = 'media'; // 'media' (in-page content.js) or 'stream' (tabCapture offscreen.js)
   let vuInterval = null;
   let tabRefreshInterval = null;
+
+  // Helper: Update Mode Pill UI
+  function updateModeUI(mode) {
+    currentMode = mode;
+    if (mode === 'stream') {
+      modeToggleBtn.className = 'mode-pill stream-mode';
+      modeToggleBtn.title = 'Active: Stream Mode (Google Meet / Teams / WebRTC). Click to switch to Media Mode.';
+      modeIcon.textContent = '🎙️';
+      modeLabel.textContent = 'Stream Mode';
+    } else {
+      modeToggleBtn.className = 'mode-pill media-mode';
+      modeToggleBtn.title = 'Active: Media Mode (YouTube / Spotify / HTML5). Click to switch to Stream Mode.';
+      modeIcon.textContent = '⚡';
+      modeLabel.textContent = 'Media Mode';
+    }
+  }
 
   // 1. Get current active tab and window (with standalone preview fallback)
   try {
@@ -42,6 +76,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (tab && tab.id) {
         currentTabId = tab.id;
         currentWindowId = tab.windowId;
+        currentTabUrl = tab.url || '';
       }
     }
   } catch (e) {
@@ -53,6 +88,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentWindowId = 1;
   }
 
+  // Auto-detect if current site is a meeting/WebRTC platform (Google Meet, Teams, etc.)
+  const isMeetingSite = STREAM_DOMAINS.some(domain => currentTabUrl.includes(domain));
+  currentMode = isMeetingSite ? 'stream' : 'media';
+
   // 2. Load stored state for this tab and global settings
   const storageKey = `tab_${currentTabId}`;
   if (window.chrome && chrome.storage && chrome.storage.local) {
@@ -61,7 +100,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const saved = storedData[storageKey];
       currentVolume = saved.volume !== undefined ? saved.volume : 100;
       isMuted = !!saved.isMuted;
-      // isCaptured is always false — Engine 2 (offscreen tabCapture) is disabled to prevent echo.
+      if (saved.mode) {
+        currentMode = saved.mode;
+      }
     }
     if (storedData.autoSoloEnabled !== undefined) {
       autoSoloToggle.checked = !!storedData.autoSoloEnabled;
@@ -72,31 +113,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Stop any leftover offscreen capture from a previous session (prevents stale echo sessions)
+  // Check if this tab already has an active stream capture running in background
   try {
-    await chrome.runtime.sendMessage({
+    const res = await chrome.runtime.sendMessage({
       target: 'background',
-      type: 'STOP_CAPTURE',
+      type: 'GET_STATUS',
       data: { tabId: currentTabId }
     });
-  } catch (e) { /* No offscreen session — safe to ignore */ }
+    if (res && res.status && res.status.active) {
+      isCaptured = true;
+      currentMode = 'stream';
+      startVUMeter();
+    }
+  } catch (e) {
+    console.debug('Status check note:', e);
+  }
 
-  // Initial UI Render
+  // Render initial UI and Mode Pill
+  updateModeUI(currentMode);
   updateUI(currentVolume, isMuted);
   refreshAudibleTabs();
 
-  // Send initial gain to content script (Engine 1 only)
-  try {
-    const initResp = await chrome.tabs.sendMessage(currentTabId, {
-      type: 'PAGE_SET_GAIN',
-      gain: currentVolume / 100,
-      isMuted: isMuted
-    });
-    if (initResp && initResp.success) {
-      statusIndicator.classList.add('active');
-      statusIndicator.querySelector('.status-label').textContent = 'BOOSTING';
-    }
-  } catch (e) { /* chrome:// pages and new tabs won't have content script — ignore */ }
+  // Initialize audio engine based on detected mode
+  if (currentMode === 'media') {
+    try {
+      const initResp = await chrome.tabs.sendMessage(currentTabId, {
+        type: 'PAGE_SET_GAIN',
+        gain: currentVolume / 100,
+        isMuted: isMuted
+      });
+      if (initResp && initResp.success) {
+        statusIndicator.classList.add('active');
+        statusIndicator.querySelector('.status-label').textContent = 'BOOSTING';
+      }
+    } catch (e) { /* chrome:// pages won't have content script — ignore */ }
+  } else {
+    // Stream mode initialized
+    statusIndicator.classList.add('active');
+    statusIndicator.querySelector('.status-label').textContent = isCaptured ? 'BOOSTING' : 'STREAM';
+  }
+
+  // Mode Toggle Button Listener
+  modeToggleBtn.addEventListener('click', async () => {
+    const nextMode = currentMode === 'media' ? 'stream' : 'media';
+    updateModeUI(nextMode);
+    await applyVolumeChange(currentVolume, isMuted, true);
+  });
 
   // 3. UI Update Helpers
   function updateUI(vol, muted) {
@@ -165,47 +227,114 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 4. Apply Gain — Engine 1 (in-page content.js) is the ONLY active engine.
-  //    Engine 2 (offscreen tabCapture) is disabled — it caused echo/reverb by
-  //    playing the same audio twice: once via the page's own media element
-  //    (gain-boosted by content.js GainNode) and again via an offscreen <Audio>
-  //    element replaying the captured tab stream.
-  async function applyVolumeChange(newVol, newMuted = false) {
+  // 4. Apply Gain — Smart Dual-Engine Audio Pipeline
+  //    - Media Mode: In-page Web Audio GainNode (zero-latency for YouTube, Spotify)
+  //    - Stream Mode: Clean offscreen tabCapture (for Google Meet, Teams, WebRTC)
+  //    - Universal Mute Safeguard: Always sync native chrome.tabs.update({ muted })
+  async function applyVolumeChange(newVol, newMuted = false, forceModeSwitch = false) {
     currentVolume = newVol;
     isMuted = newMuted;
 
     updateUI(currentVolume, isMuted);
+
+    // Universal Mute Safeguard: Synchronize native browser tab mute status
+    // Ensures Google Meet, YouTube, and all sites mute reliably via native Chromium mixer
+    if (window.chrome && chrome.tabs && chrome.tabs.update && currentTabId) {
+      chrome.tabs.update(currentTabId, { muted: isMuted }).catch(() => {});
+    }
 
     // Save to storage
     chrome.storage.local.set({
       [`tab_${currentTabId}`]: {
         volume: currentVolume,
         isMuted: isMuted,
-        isCaptured: false
+        mode: currentMode
       }
     });
 
     const gainValue = currentVolume / 100;
 
-    // Engine 1 ONLY: Direct In-Page Web Audio Boost via content.js GainNode.
-    // Hooks <video>/<audio> elements directly — zero latency, no double-audio echo.
-    try {
-      const resp = await chrome.tabs.sendMessage(currentTabId, {
-        type: 'PAGE_SET_GAIN',
-        gain: gainValue,
-        isMuted: isMuted
-      });
-
-      if (resp && resp.success) {
-        statusIndicator.classList.add('active');
-        statusIndicator.querySelector('.status-label').textContent = 'BOOSTING';
+    if (currentMode === 'media') {
+      // If a stream capture was previously active on this tab, stop it to prevent echo
+      if (isCaptured) {
+        chrome.runtime.sendMessage({
+          target: 'background',
+          type: 'STOP_CAPTURE',
+          data: { tabId: currentTabId }
+        }).catch(() => {});
+        isCaptured = false;
+        stopVUMeter();
       }
-    } catch (e) {
-      // Content script not injected on this page (chrome:// URL, etc.) — ignore.
-    }
 
-    // Engine 2 (INIT_TAB_STREAM / offscreen tabCapture) intentionally disabled.
-    // Do NOT re-enable without also stopping Engine 1 first, or echo will return.
+      // Route via Engine 1: Direct In-Page Web Audio Boost
+      try {
+        const resp = await chrome.tabs.sendMessage(currentTabId, {
+          type: 'PAGE_SET_GAIN',
+          gain: gainValue,
+          isMuted: isMuted
+        });
+
+        // Auto-fallback: if page reports 0 media elements and user is boosting volume > 100%,
+        // automatically switch to Stream Mode (WebRTC audio / Google Meet)
+        if (resp && resp.mediaCount === 0 && currentVolume > 100 && !forceModeSwitch) {
+          console.debug('[Booster] 0 media elements detected on page, auto-switching to Stream Mode');
+          updateModeUI('stream');
+          return applyVolumeChange(currentVolume, isMuted, true);
+        }
+
+        if (resp && resp.success) {
+          statusIndicator.classList.add('active');
+          statusIndicator.querySelector('.status-label').textContent = 'BOOSTING';
+        }
+      } catch (e) {
+        // If content script cannot be reached (e.g. Chrome Web Store or internal page), fallback
+        if (currentVolume > 100 && !forceModeSwitch) {
+          updateModeUI('stream');
+          return applyVolumeChange(currentVolume, isMuted, true);
+        }
+      }
+    } else {
+      // Route via Engine 2: Stream Mode (Offscreen Tab Capture)
+      // First, set in-page gain to neutral (1.0) so content.js does not double-amplify
+      chrome.tabs.sendMessage(currentTabId, {
+        type: 'PAGE_SET_GAIN',
+        gain: 1.0,
+        isMuted: false
+      }).catch(() => {});
+
+      try {
+        if (!isCaptured) {
+          const res = await chrome.runtime.sendMessage({
+            target: 'background',
+            type: 'INIT_TAB_STREAM',
+            data: {
+              tabId: currentTabId,
+              gain: gainValue,
+              isMuted: isMuted
+            }
+          });
+
+          if (res && res.success) {
+            isCaptured = true;
+            statusIndicator.classList.add('active');
+            statusIndicator.querySelector('.status-label').textContent = 'BOOSTING';
+            startVUMeter();
+          }
+        } else {
+          await chrome.runtime.sendMessage({
+            target: 'background',
+            type: 'SET_GAIN',
+            data: {
+              tabId: currentTabId,
+              gain: gainValue,
+              isMuted: isMuted
+            }
+          });
+        }
+      } catch (err) {
+        console.error('[Booster] Stream mode adjustment error:', err);
+      }
+    }
   }
 
   // 5. Multi-Tab Scanner & Renderer (Safe DOM methods)
@@ -294,6 +423,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   powerBtn.addEventListener('click', async () => {
     try {
+      // Unmute native browser tab if muted
+      if (window.chrome && chrome.tabs && chrome.tabs.update && currentTabId) {
+        chrome.tabs.update(currentTabId, { muted: false }).catch(() => {});
+      }
+
       // Detach content script & background stream
       chrome.tabs.sendMessage(currentTabId, {
         type: 'PAGE_SET_GAIN',
@@ -307,6 +441,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         data: { tabId: currentTabId }
       });
       isCaptured = false;
+      isMuted = false;
+      currentVolume = 100;
       stopVUMeter();
       statusIndicator.classList.remove('active');
       statusIndicator.querySelector('.status-label').textContent = 'DETACHED';

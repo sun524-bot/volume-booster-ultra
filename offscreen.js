@@ -34,7 +34,6 @@ async function startCapture(tabId, streamId, gain = 1.0, isMuted = false) {
     const gainNode = audioCtx.createGain();
     const compressorNode = audioCtx.createDynamicsCompressor();
     const analyserNode = audioCtx.createAnalyser();
-    const streamDestNode = audioCtx.createMediaStreamDestination();
 
     // Configure Dynamics Compressor (Anti-Clipping & Distortion Prevention)
     compressorNode.threshold.setValueAtTime(-12, audioCtx.currentTime); // dB
@@ -51,18 +50,12 @@ async function startCapture(tabId, streamId, gain = 1.0, isMuted = false) {
     const targetGain = isMuted ? 0 : gain;
     gainNode.gain.setValueAtTime(targetGain, audioCtx.currentTime);
 
-    // Build Pipeline:
-    // Source -> Gain -> Compressor -> Analyser -> Output
+    // Build Single-Output Pipeline (Zero-Echo):
+    // Source -> Gain -> Compressor -> Analyser -> audioCtx.destination
     sourceNode.connect(gainNode);
     gainNode.connect(compressorNode);
     compressorNode.connect(analyserNode);
     analyserNode.connect(audioCtx.destination);
-    analyserNode.connect(streamDestNode);
-
-    // Offscreen audio element playback ensures physical speaker output in Chrome/Edge
-    const playbackAudio = new Audio();
-    playbackAudio.srcObject = streamDestNode.stream;
-    playbackAudio.play().catch(e => console.debug('Playback auto-start note:', e));
 
     // Save session
     tabSessions.set(tabId, {
@@ -72,7 +65,6 @@ async function startCapture(tabId, streamId, gain = 1.0, isMuted = false) {
       gainNode,
       compressorNode,
       analyserNode,
-      playbackAudio,
       gain,
       isMuted
     });
@@ -118,10 +110,6 @@ function stopCapture(tabId) {
   if (!session) return false;
 
   try {
-    if (session.playbackAudio) {
-      session.playbackAudio.pause();
-      session.playbackAudio.srcObject = null;
-    }
     if (session.stream) {
       session.stream.getTracks().forEach(track => track.stop());
     }

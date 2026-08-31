@@ -104,12 +104,24 @@ if (document.readyState === 'loading') {
 // Listen for gain adjustment messages from popup/background.
 // These are always triggered by the user clicking in the popup — a valid user gesture.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'PAGE_GET_MEDIA_STATUS') {
+    const count = document.querySelectorAll('video, audio').length;
+    sendResponse({
+      count,
+      hasAudioCtx: !!audioCtx,
+      active: !!audioCtx && audioCtx.state === 'running'
+    });
+    return true;
+  }
+
   if (message.type === 'PAGE_SET_GAIN') {
     // Popup click = user gesture: safe to create AudioContext now if not yet created
     if (!audioCtx) {
       initWebAudio();
     }
     hookAllMedia(); // Hook any newly discovered elements
+
+    const mediaCount = document.querySelectorAll('video, audio').length;
 
     if (audioCtx && gainNode) {
       if (audioCtx.state === 'suspended') {
@@ -118,9 +130,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       const targetGain = message.isMuted ? 0 : message.gain;
       gainNode.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.02);
-      sendResponse({ success: true, gain: targetGain, active: true });
+      sendResponse({ success: true, gain: targetGain, active: true, mediaCount });
     } else {
-      sendResponse({ success: false, reason: 'AudioContext unavailable — no user gesture yet' });
+      sendResponse({ success: false, reason: 'AudioContext unavailable — no user gesture yet', mediaCount });
     }
     return true;
   }
